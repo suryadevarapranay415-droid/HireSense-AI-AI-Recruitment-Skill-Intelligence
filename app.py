@@ -378,3 +378,97 @@ with tab3:
         "Educational prototype using experimental scoring. "
         "Do not use it to make automated hiring decisions."
     )
+    # ---------------- RAG RECRUITMENT CHATBOT ----------------
+
+with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
+    st.write(
+        "Ask questions about your resume dataset. "
+        "This first version retrieves relevant records without an API key."
+    )
+
+    uploaded_resumes = st.file_uploader(
+        "Upload your resumes CSV",
+        type=["csv"],
+        key="rag_resumes"
+    )
+
+    uploaded_jobs = st.file_uploader(
+        "Upload your job descriptions CSV (optional)",
+        type=["csv"],
+        key="rag_jobs"
+    )
+
+    question = st.text_input(
+        "Ask a recruitment question",
+        placeholder="Example: Find Python candidates with SQL skills"
+    )
+
+    if st.button("Search recruitment data"):
+        if uploaded_resumes is None:
+            st.warning("Please upload your resumes CSV first.")
+        elif not question.strip():
+            st.warning("Please enter a question.")
+        else:
+            try:
+                resumes = pd.read_csv(uploaded_resumes)
+
+                # Combine each resume row into searchable text
+                resumes["search_text"] = resumes.astype(str).agg(
+                    " | ".join, axis=1
+                )
+
+                documents = resumes["search_text"].tolist()
+                document_types = ["Resume"] * len(documents)
+
+                if uploaded_jobs is not None:
+                    jobs = pd.read_csv(uploaded_jobs)
+                    jobs["search_text"] = jobs.astype(str).agg(
+                        " | ".join, axis=1
+                    )
+                    documents.extend(jobs["search_text"].tolist())
+                    document_types.extend(["Job description"] * len(jobs))
+
+                if not documents:
+                    st.warning("No records found in the uploaded files.")
+                else:
+                    with st.spinner("Finding relevant records..."):
+                        model = load_semantic_model()
+
+                        question_vector = model.encode(
+                            [question],
+                            normalize_embeddings=True
+                        )
+
+                        document_vectors = model.encode(
+                            documents,
+                            normalize_embeddings=True,
+                            show_progress_bar=False
+                        )
+
+                        similarities = (
+                            document_vectors @ question_vector[0]
+                        )
+
+                        top_indices = similarities.argsort()[::-1][:5]
+
+                    st.subheader("Relevant evidence")
+
+                    for rank, index in enumerate(top_indices, start=1):
+                        st.markdown(
+                            f"**Result {rank} — "
+                            f"{document_types[index]}**"
+                        )
+                        st.caption(
+                            f"Semantic similarity: "
+                            f"{similarities[index] * 100:.1f}%"
+                        )
+                        st.write(documents[index])
+                        st.divider()
+
+                    st.info(
+                        "These are similarity-based search results, "
+                        "not verified candidate rankings or hiring decisions."
+                    )
+
+            except Exception as error:
+                st.error(f"Could not search the uploaded data: {error}")
