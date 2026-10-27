@@ -495,7 +495,11 @@ with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
 
                     # Search every resume for explicitly listed skills.
                                         # -------- DYNAMIC FULL-DATASET SKILL SEARCH --------
-                    if "find candidates" in question_lower or "search skills" in question_lower:
+                                      # -------- DYNAMIC FULL-DATASET SKILL SEARCH --------
+                    if (
+                        "find candidates" in question_lower
+                        or "search skills" in question_lower
+                    ):
                         st.subheader("🔎 Full-Dataset Skill Search")
 
                         skill_options = [
