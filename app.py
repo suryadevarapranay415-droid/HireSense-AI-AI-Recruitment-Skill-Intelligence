@@ -553,8 +553,7 @@ with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
                         )
 
                         top_indices = similarities.argsort()[::-1][:5]
-
-                                        st.subheader("Relevant evidence")
+                    st.subheader("Relevant evidence")
                     st.caption(
                         "Top matching records, ranked by semantic similarity."
                     )
