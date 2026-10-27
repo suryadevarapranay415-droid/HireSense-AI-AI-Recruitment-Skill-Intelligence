@@ -378,12 +378,12 @@ with tab3:
         "Educational prototype using experimental scoring. "
         "Do not use it to make automated hiring decisions."
     )
-    # ---------------- RAG RECRUITMENT CHATBOT ----------------
+ # ---------------- RAG RECRUITMENT CHATBOT ----------------
 
 with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
     st.write(
         "Ask questions about your resume dataset. "
-        "This first version retrieves relevant records without an API key."
+        "This version retrieves relevant records without an API key."
     )
 
     uploaded_resumes = st.file_uploader(
@@ -411,6 +411,109 @@ with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
         else:
             try:
                 resumes = pd.read_csv(uploaded_resumes)
+
+                resumes["search_text"] = resumes.astype(str).agg(
+                    " | ".join, axis=1
+                )
+
+                documents = resumes["search_text"].tolist()
+                document_types = ["Resume"] * len(documents)
+
+                if uploaded_jobs is not None:
+                    jobs = pd.read_csv(uploaded_jobs)
+                    jobs["search_text"] = jobs.astype(str).agg(
+                        " | ".join, axis=1
+                    )
+                    documents.extend(jobs["search_text"].tolist())
+                    document_types.extend(
+                        ["Job description"] * len(jobs)
+                    )
+
+                if not documents:
+                    st.warning("No records found in the uploaded files.")
+                else:
+                    with st.spinner("Finding relevant records..."):
+                        model = load_semantic_model()
+
+                        question_vector = model.encode(
+                            [question],
+                            normalize_embeddings=True
+                        )
+
+                        document_vectors = model.encode(
+                            documents,
+                            normalize_embeddings=True,
+                            show_progress_bar=False
+                        )
+
+                        similarities = (
+                            document_vectors @ question_vector[0]
+                        )
+
+                        top_indices = similarities.argsort()[::-1][:5]
+
+                    st.subheader("Relevant evidence")
+                    st.caption(
+                        "Top matching records, ranked by semantic similarity."
+                    )
+
+                    for rank, index in enumerate(top_indices, start=1):
+                        record_text = documents[index]
+
+                        st.markdown(
+                            f"### {rank}. {document_types[index]}"
+                        )
+                        st.metric(
+                            "Semantic similarity",
+                            f"{similarities[index] * 100:.1f}%"
+                        )
+
+                        if document_types[index] == "Resume":
+                            row = resumes.iloc[index]
+
+                            col1, col2 = st.columns(2)
+
+                            with col1:
+                                st.write(
+                                    "**Candidate ID:**",
+                                    row.get(
+                                        "candidate_id",
+                                        row.get("candidateid", "Not available")
+                                    )
+                                )
+                                st.write(
+                                    "**Target role:**",
+                                    row.get("target_role", "Not available")
+                                )
+
+                            with col2:
+                                st.write(
+                                    "**Experience:**",
+                                    row.get(
+                                        "experience_years",
+                                        row.get("experience", "Not available")
+                                    )
+                                )
+                                st.write(
+                                    "**Skills:**",
+                                    row.get(
+                                        "technical_skills",
+                                        row.get("skills", "See full record")
+                                    )
+                                )
+
+                        with st.expander("View full record"):
+                            st.write(record_text)
+
+                        st.divider()
+
+                    st.info(
+                        "Similarity measures text relevance, not candidate "
+                        "quality or hiring probability. Review records manually."
+                    )
+
+            except Exception as error:
+                st.error(f"Could not search the uploaded data: {error}")
 
                 # Combine each resume row into searchable text
                 resumes["search_text"] = resumes.astype(str).agg(
