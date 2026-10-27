@@ -491,7 +491,7 @@ with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
 
                     st.subheader("💬 Recruitment Answer")
 
-                                       question_lower = question.lower()
+                    question_lower = question.lower()
 
                     # Search every resume for explicitly listed skills.
                     if (
