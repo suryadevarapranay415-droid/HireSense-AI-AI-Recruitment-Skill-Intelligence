@@ -491,7 +491,43 @@ with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
 
                     st.subheader("💬 Recruitment Answer")
 
-                    question_lower = question.lower()
+                                       question_lower = question.lower()
+
+                    # Search every resume for explicitly listed skills.
+                    if (
+                        "both" in question_lower
+                        and "python" in question_lower
+                        and "sql" in question_lower
+                    ):
+                        st.subheader("🔎 Full-Dataset Skill Search")
+
+                        all_resume_matches = resumes[
+                            resumes["search_text"].str.contains(
+                                r"\bpython\b", case=False, regex=True, na=False
+                            )
+                            & resumes["search_text"].str.contains(
+                                r"\bsql\b", case=False, regex=True, na=False
+                            )
+                        ].copy()
+
+                        st.write(
+                            f"Found **{len(all_resume_matches)} resumes** "
+                            "that explicitly mention both Python and SQL."
+                        )
+
+                        if not all_resume_matches.empty:
+                            st.dataframe(
+                                all_resume_matches.drop(
+                                    columns=["search_text"],
+                                    errors="ignore"
+                                ),
+                                hide_index=True,
+                                use_container_width=True
+                            )
+                        else:
+                            st.info(
+                                "No resumes explicitly mention both skills."
+                            )
 
                     if not retrieved_candidates:
                         st.info(
