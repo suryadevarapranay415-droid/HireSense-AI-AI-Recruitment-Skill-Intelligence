@@ -494,30 +494,44 @@ with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
                     question_lower = question.lower()
 
                     # Search every resume for explicitly listed skills.
-                    if (
-                        "both" in question_lower
-                        and "python" in question_lower
-                        and "sql" in question_lower
-                    ):
+                                        # -------- DYNAMIC FULL-DATASET SKILL SEARCH --------
+                    if "find candidates" in question_lower or "search skills" in question_lower:
                         st.subheader("🔎 Full-Dataset Skill Search")
 
-                        all_resume_matches = resumes[
-                            resumes["search_text"].str.contains(
-                                r"\bpython\b", case=False, regex=True, na=False
-                            )
-                            & resumes["search_text"].str.contains(
-                                r"\bsql\b", case=False, regex=True, na=False
-                            )
-                        ].copy()
+                        skill_options = [
+                            "Python", "SQL", "Java", "Machine Learning",
+                            "Deep Learning", "NLP", "LLMs", "RAG",
+                            "Pandas", "NumPy", "FastAPI", "Flask",
+                            "Git", "Docker", "AWS", "REST APIs",
+                            "Excel", "JavaScript", "HTML/CSS"
+                        ]
 
-                        st.write(
-                            f"Found **{len(all_resume_matches)} resumes** "
-                            "that explicitly mention both Python and SQL."
+                        selected_skills = st.multiselect(
+                            "Select required skills",
+                            options=skill_options,
+                            key="dynamic_skill_filter"
                         )
 
-                        if not all_resume_matches.empty:
+                        if selected_skills:
+                            mask = pd.Series(True, index=resumes.index)
+
+                            for skill in selected_skills:
+                                mask &= resumes["search_text"].str.contains(
+                                    re.escape(skill),
+                                    case=False,
+                                    regex=True,
+                                    na=False
+                                )
+
+                            matches = resumes[mask].copy()
+
+                            st.write(
+                                f"Found **{len(matches)} resumes** "
+                                f"containing all selected skills."
+                            )
+
                             st.dataframe(
-                                all_resume_matches.drop(
+                                matches.drop(
                                     columns=["search_text"],
                                     errors="ignore"
                                 ),
@@ -525,228 +539,4 @@ with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
                                 use_container_width=True
                             )
                         else:
-                            st.info(
-                                "No resumes explicitly mention both skills."
-                            )
-
-                    if not retrieved_candidates:
-                        st.info(
-                            "No resume records were retrieved for this question."
-                        )
-
-                    elif (
-                        "both" in question_lower
-                        and "python" in question_lower
-                        and "sql" in question_lower
-                    ):
-                        matches = [
-                            candidate for candidate in retrieved_candidates
-                            if "python" in candidate["Skills"].lower()
-                            and "sql" in candidate["Skills"].lower()
-                        ]
-
-                        if matches:
-                            st.write(
-                                "Among the retrieved candidates, "
-                                "these records list both Python and SQL:"
-                            )
-                            st.dataframe(
-                                pd.DataFrame(matches),
-                                hide_index=True,
-                                use_container_width=True
-                            )
-                        else:
-                            st.write(
-                                "No retrieved resume explicitly lists both "
-                                "Python and SQL in the displayed skills field."
-                            )
-
-                    elif (
-                        "compare" in question_lower
-                        or "comparison" in question_lower
-                    ):
-                        st.write(
-                            "Comparison of the retrieved candidates:"
-                        )
-                        st.dataframe(
-                            pd.DataFrame(retrieved_candidates[:3]),
-                            hide_index=True,
-                            use_container_width=True
-                        )
-
-                    else:
-                        st.write(
-                            f"Found {len(retrieved_candidates)} resume "
-                            "record(s) among the retrieved results. "
-                            "Here is a summary of the available evidence:"
-                        )
-
-                        st.dataframe(
-                            pd.DataFrame(retrieved_candidates[:3]),
-                            hide_index=True,
-                            use_container_width=True
-                        )
-
-                    st.caption(
-                        "Answers are generated using simple rules over "
-                        "retrieved records, not an LLM. Only the retrieved "
-                        "results are considered; missing information is "
-                        "not inferred."
-                    )
-                    st.subheader("Relevant evidence")
-                    st.caption(
-                        "Top matching records, ranked by semantic similarity."
-                    )
-
-                    for rank, index in enumerate(top_indices, start=1):
-                        record_text = documents[index]
-
-                        st.markdown(
-                            f"### {rank}. {document_types[index]}"
-                        )
-                        st.metric(
-                            "Semantic similarity",
-                            f"{similarities[index] * 100:.1f}%"
-                        )
-
-                        if document_types[index] == "Resume":
-                            row = resumes.iloc[index]
-
-                            col1, col2 = st.columns(2)
-
-                            with col1:
-                                st.write(
-                                    "**Candidate ID:**",
-                                    row.get(
-                                        "candidate_id",
-                                        row.get("candidateid", "Not available")
-                                    )
-                                )
-                                st.write(
-                                    "**Target role:**",
-                                    row.get("target_role", "Not available")
-                                )
-
-                            with col2:
-                                st.write(
-                                    "**Experience:**",
-                                    row.get(
-                                        "experience_years",
-                                        row.get("experience", "Not available")
-                                    )
-                                )
-                                st.write(
-                                    "**Skills:**",
-                                    row.get(
-                                        "technical_skills",
-                                        row.get("skills", "See full record")
-                                    )
-                                )
-
-                        with st.expander("View full record"):
-                            st.write(record_text)
-
-                        st.divider()
-
-                    st.info(
-                        "Similarity measures text relevance, not candidate "
-                        "quality or hiring probability. Review records manually."
-                    )
-
-            except Exception as error:
-                st.error(f"Could not search the uploaded data: {error}")
-
-                # Combine each resume row into searchable text
-                resumes["search_text"] = resumes.astype(str).agg(
-                    " | ".join, axis=1
-                )
-
-                documents = resumes["search_text"].tolist()
-                document_types = ["Resume"] * len(documents)
-
-                if uploaded_jobs is not None:
-                    jobs = pd.read_csv(uploaded_jobs)
-                    jobs["search_text"] = jobs.astype(str).agg(
-                        " | ".join, axis=1
-                    )
-                    documents.extend(jobs["search_text"].tolist())
-                    document_types.extend(["Job description"] * len(jobs))
-
-                if not documents:
-                    st.warning("No records found in the uploaded files.")
-                else:
-                    with st.spinner("Finding relevant records..."):
-                        model = load_semantic_model()
-
-                        question_vector = model.encode(
-                            [question],
-                            normalize_embeddings=True
-                        )
-
-                        document_vectors = model.encode(
-                            documents,
-                            normalize_embeddings=True,
-                            show_progress_bar=False
-                        )
-
-                        similarities = (
-                            document_vectors @ question_vector[0]
-                        )
-
-                        top_indices = similarities.argsort()[::-1][:5]
-                    st.subheader("Relevant evidence")
-                    st.caption(
-                        "Top matching records, ranked by semantic similarity."
-                    )
-
-                    for rank, index in enumerate(top_indices, start=1):
-                        record_text = documents[index]
-
-                        st.markdown(f"### {rank}. {document_types[index]}")
-                        st.metric(
-                            "Semantic similarity",
-                            f"{similarities[index] * 100:.1f}%"
-                        )
-
-                        if document_types[index] == "Resume":
-                            row = resumes.iloc[index] if index < len(resumes) else None
-
-                            if row is not None:
-                                col1, col2 = st.columns(2)
-
-                                with col1:
-                                    st.write(
-                                        "**Candidate ID:**",
-                                        row.get("candidate_id",
-                                        row.get("candidateid", "Not available"))
-                                    )
-                                    st.write(
-                                        "**Target role:**",
-                                        row.get("target_role", "Not available")
-                                    )
-
-                                with col2:
-                                    st.write(
-                                        "**Experience:**",
-                                        row.get("experience_years",
-                                        row.get("experience", "Not available"))
-                                    )
-                                    st.write(
-                                        "**Skills:**",
-                                        row.get("technical_skills",
-                                        row.get("skills", "See record below"))
-                                    )
-
-                        with st.expander("View full record"):
-                            st.write(record_text)
-
-                        st.divider()
-
-                    st.info(
-                        "Similarity measures text relevance, not candidate "
-                        "quality or hiring probability. Verify the original "
-                        "records before drawing conclusions."
-                    )
-
-            except Exception as error:
-                st.error(f"Could not search the uploaded data: {error}")
+                            st.info("Select one or more skills to search.")
