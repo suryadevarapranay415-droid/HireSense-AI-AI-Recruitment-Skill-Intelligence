@@ -452,6 +452,111 @@ with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
 
                         top_indices = similarities.argsort()[::-1][:5]
 
+                                        # -------- BASIC EVIDENCE-BASED ANSWERING --------
+
+                    retrieved_candidates = []
+
+                    for index in top_indices:
+                        if document_types[index] != "Resume":
+                            continue
+
+                        row = resumes.iloc[index]
+
+                        candidate_id = row.get(
+                            "candidate_id",
+                            row.get("candidateid", "Unknown")
+                        )
+
+                        role = row.get("target_role", "Not specified")
+
+                        experience = row.get(
+                            "experience_years",
+                            row.get("experience", "Not specified")
+                        )
+
+                        skills = str(row.get(
+                            "technical_skills",
+                            row.get("skills", "")
+                        ))
+
+                        retrieved_candidates.append({
+                            "Candidate ID": candidate_id,
+                            "Target Role": role,
+                            "Experience (years)": experience,
+                            "Skills": skills,
+                            "Similarity (%)": round(
+                                float(similarities[index]) * 100, 1
+                            )
+                        })
+
+                    st.subheader("💬 Recruitment Answer")
+
+                    question_lower = question.lower()
+
+                    if not retrieved_candidates:
+                        st.info(
+                            "No resume records were retrieved for this question."
+                        )
+
+                    elif (
+                        "both" in question_lower
+                        and "python" in question_lower
+                        and "sql" in question_lower
+                    ):
+                        matches = [
+                            candidate for candidate in retrieved_candidates
+                            if "python" in candidate["Skills"].lower()
+                            and "sql" in candidate["Skills"].lower()
+                        ]
+
+                        if matches:
+                            st.write(
+                                "Among the retrieved candidates, "
+                                "these records list both Python and SQL:"
+                            )
+                            st.dataframe(
+                                pd.DataFrame(matches),
+                                hide_index=True,
+                                use_container_width=True
+                            )
+                        else:
+                            st.write(
+                                "No retrieved resume explicitly lists both "
+                                "Python and SQL in the displayed skills field."
+                            )
+
+                    elif (
+                        "compare" in question_lower
+                        or "comparison" in question_lower
+                    ):
+                        st.write(
+                            "Comparison of the retrieved candidates:"
+                        )
+                        st.dataframe(
+                            pd.DataFrame(retrieved_candidates[:3]),
+                            hide_index=True,
+                            use_container_width=True
+                        )
+
+                    else:
+                        st.write(
+                            f"Found {len(retrieved_candidates)} resume "
+                            "record(s) among the retrieved results. "
+                            "Here is a summary of the available evidence:"
+                        )
+
+                        st.dataframe(
+                            pd.DataFrame(retrieved_candidates[:3]),
+                            hide_index=True,
+                            use_container_width=True
+                        )
+
+                    st.caption(
+                        "Answers are generated using simple rules over "
+                        "retrieved records, not an LLM. Only the retrieved "
+                        "results are considered; missing information is "
+                        "not inferred."
+                    )
                     st.subheader("Relevant evidence")
                     st.caption(
                         "Top matching records, ranked by semantic similarity."
