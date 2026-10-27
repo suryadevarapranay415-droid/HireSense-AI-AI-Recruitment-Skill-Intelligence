@@ -451,23 +451,58 @@ with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
 
                         top_indices = similarities.argsort()[::-1][:5]
 
-                    st.subheader("Relevant evidence")
+                                        st.subheader("Relevant evidence")
+                    st.caption(
+                        "Top matching records, ranked by semantic similarity."
+                    )
 
                     for rank, index in enumerate(top_indices, start=1):
-                        st.markdown(
-                            f"**Result {rank} — "
-                            f"{document_types[index]}**"
-                        )
-                        st.caption(
-                            f"Semantic similarity: "
+                        record_text = documents[index]
+
+                        st.markdown(f"### {rank}. {document_types[index]}")
+                        st.metric(
+                            "Semantic similarity",
                             f"{similarities[index] * 100:.1f}%"
                         )
-                        st.write(documents[index])
+
+                        if document_types[index] == "Resume":
+                            row = resumes.iloc[index] if index < len(resumes) else None
+
+                            if row is not None:
+                                col1, col2 = st.columns(2)
+
+                                with col1:
+                                    st.write(
+                                        "**Candidate ID:**",
+                                        row.get("candidate_id",
+                                        row.get("candidateid", "Not available"))
+                                    )
+                                    st.write(
+                                        "**Target role:**",
+                                        row.get("target_role", "Not available")
+                                    )
+
+                                with col2:
+                                    st.write(
+                                        "**Experience:**",
+                                        row.get("experience_years",
+                                        row.get("experience", "Not available"))
+                                    )
+                                    st.write(
+                                        "**Skills:**",
+                                        row.get("technical_skills",
+                                        row.get("skills", "See record below"))
+                                    )
+
+                        with st.expander("View full record"):
+                            st.write(record_text)
+
                         st.divider()
 
                     st.info(
-                        "These are similarity-based search results, "
-                        "not verified candidate rankings or hiring decisions."
+                        "Similarity measures text relevance, not candidate "
+                        "quality or hiring probability. Verify the original "
+                        "records before drawing conclusions."
                     )
 
             except Exception as error:
