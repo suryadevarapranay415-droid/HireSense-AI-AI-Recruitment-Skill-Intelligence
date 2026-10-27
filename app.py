@@ -494,8 +494,7 @@ with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
                     question_lower = question.lower()
 
                     # Search every resume for explicitly listed skills.
-                                        # -------- DYNAMIC FULL-DATASET SKILL SEARCH --------
-                                      # -------- DYNAMIC FULL-DATASET SKILL SEARCH --------
+                    # -------- DYNAMIC FULL-DATASET SKILL SEARCH --------
                     if (
                         "find candidates" in question_lower
                         or "search skills" in question_lower
@@ -531,7 +530,7 @@ with st.expander("🤖 HireSense AI Recruitment Chatbot", expanded=True):
 
                             st.write(
                                 f"Found **{len(matches)} resumes** "
-                                f"containing all selected skills."
+                                "containing all selected skills."
                             )
 
                             st.dataframe(
