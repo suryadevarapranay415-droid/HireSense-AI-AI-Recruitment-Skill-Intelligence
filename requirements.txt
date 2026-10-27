@@ -8,3 +8,5 @@ streamlit
 fastapi
 uvicorn
 openai
+scikit-learn
+sentence-transformers
