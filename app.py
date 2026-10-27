@@ -1,10 +1,11 @@
 
 import re
-import io
 import pandas as pd
 import streamlit as st
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
 
 st.set_page_config(
     page_title="HireSense AI",
@@ -15,9 +16,11 @@ st.set_page_config(
 st.title("🧠 HireSense AI")
 st.subheader("AI Recruitment & Skill Intelligence Platform")
 st.write(
-    "Analyze resumes, match candidates with job descriptions, "
-    "and discover skill gaps using NLP and machine learning."
+    "Compare resumes with job descriptions using semantic AI, "
+    "NLP, and skill-gap analysis."
 )
+
+# ---------------- SKILL TAXONOMY ----------------
 
 SKILL_TAXONOMY = {
     "Python": ["python"],
@@ -57,29 +60,81 @@ def extract_skills(text):
     return sorted(set(found))
 
 
-def calculate_match(resume_text, job_text):
-    documents = [str(resume_text), str(job_text)]
+# ---------------- AI MODEL ----------------
 
+@st.cache_resource
+def load_semantic_model():
+    return SentenceTransformer("all-MiniLM-L6-v2")
+
+
+def calculate_tfidf(resume_text, job_text):
     vectorizer = TfidfVectorizer(
         stop_words="english",
         ngram_range=(1, 2)
     )
 
-    matrix = vectorizer.fit_transform(documents)
-    similarity = cosine_similarity(matrix[0:1], matrix[1:2])[0][0]
+    matrix = vectorizer.fit_transform(
+        [str(resume_text), str(job_text)]
+    )
 
+    similarity = cosine_similarity(
+        matrix[0:1], matrix[1:2]
+    )[0][0]
+
+    return float(similarity * 100)
+
+
+def calculate_semantic_similarity(resume_text, job_text):
+    model = load_semantic_model()
+
+    embeddings = model.encode(
+        [str(resume_text), str(job_text)],
+        normalize_embeddings=True,
+        convert_to_numpy=True
+    )
+
+    similarity = float(embeddings[0] @ embeddings[1])
+
+    # Keep the displayed percentage between 0 and 100.
+    return max(0.0, min(100.0, similarity * 100))
+
+
+def analyze_resume(resume_text, job_text):
     resume_skills = set(extract_skills(resume_text))
     job_skills = set(extract_skills(job_text))
 
     if job_skills:
-        skill_coverage = len(resume_skills & job_skills) / len(job_skills)
+        coverage = (
+            len(resume_skills.intersection(job_skills))
+            / len(job_skills)
+        )
     else:
-        skill_coverage = 0.0
+        coverage = 0.0
 
-    score = (0.60 * similarity + 0.40 * skill_coverage) * 100
+    tfidf_score = calculate_tfidf(resume_text, job_text)
+    semantic_score = calculate_semantic_similarity(
+        resume_text, job_text
+    )
 
-    return round(score, 2), sorted(resume_skills), sorted(job_skills)
+    # Experimental combined score:
+    # 60% semantic similarity + 40% detected skill coverage.
+    combined_score = (
+        0.60 * semantic_score + 0.40 * coverage * 100
+    )
 
+    return {
+        "semantic_score": round(semantic_score, 2),
+        "tfidf_score": round(tfidf_score, 2),
+        "coverage": round(coverage * 100, 2),
+        "combined_score": round(combined_score, 2),
+        "resume_skills": sorted(resume_skills),
+        "job_skills": sorted(job_skills),
+        "missing_skills": sorted(job_skills - resume_skills),
+        "matched_skills": sorted(job_skills & resume_skills)
+    }
+
+
+# ---------------- APP TABS ----------------
 
 tab1, tab2, tab3 = st.tabs([
     "Resume Matcher",
@@ -87,19 +142,27 @@ tab1, tab2, tab3 = st.tabs([
     "About"
 ])
 
+
+# ---------------- RESUME MATCHER ----------------
+
 with tab1:
-    st.header("Match a Resume to a Job")
+    st.header("Semantic AI Resume Matcher")
+
+    st.info(
+        "The first semantic analysis may take a few minutes "
+        "because the AI model needs to download and initialize."
+    )
 
     resume_file = st.file_uploader(
         "Upload a resume (.txt)",
         type=["txt"],
-        key="resume"
+        key="resume_upload"
     )
 
-    resume_text_input = st.text_area(
-        "Or paste the resume text here",
+    resume_input = st.text_area(
+        "Or paste resume text here",
         height=180,
-        placeholder="Paste candidate skills, education, projects, and experience..."
+        placeholder="Enter skills, education, projects, and experience..."
     )
 
     job_text = st.text_area(
@@ -108,75 +171,157 @@ with tab1:
         placeholder="Enter the role, responsibilities, and required skills..."
     )
 
-    if st.button("Analyze Resume", type="primary"):
-        if not (resume_file or resume_text_input.strip()):
+    if st.button("Run Semantic AI Analysis", type="primary"):
+        if resume_file is not None:
+            uploaded_text = resume_file.getvalue().decode(
+                "utf-8", errors="replace"
+            )
+            resume_text = uploaded_text or resume_input
+        else:
+            resume_text = resume_input
+
+        if not resume_text.strip():
             st.error("Please upload a resume or paste resume text.")
         elif not job_text.strip():
             st.error("Please enter a job description.")
         else:
-            if resume_file:
-                uploaded_text = resume_file.getvalue().decode(
-                    "utf-8", errors="replace"
-                )
-                resume_text = uploaded_text or resume_text_input
-            else:
-                resume_text = resume_text_input
+            try:
+                with st.spinner(
+                    "Loading semantic AI model and analyzing text..."
+                ):
+                    results = analyze_resume(resume_text, job_text)
 
-            score, resume_skills, job_skills = calculate_match(
-                resume_text, job_text
-            )
+                st.success("Analysis completed!")
 
-            col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
 
-            with col1:
-                st.metric("Experimental Match Score", f"{score}%")
-
-            with col2:
-                st.metric(
-                    "Required Skills Detected",
-                    f"{len(set(resume_skills) & set(job_skills))}/{len(job_skills)}"
+                col1.metric(
+                    "Combined Experimental Score",
+                    f"{results['combined_score']}%"
                 )
 
-            st.progress(min(max(score / 100, 0.0), 1.0))
+                col2.metric(
+                    "Semantic Similarity",
+                    f"{results['semantic_score']}%"
+                )
 
-            st.subheader("Skills Found in Resume")
-            st.write(", ".join(resume_skills) if resume_skills else "No listed skills detected.")
+                col3.metric(
+                    "Skill Coverage",
+                    f"{results['coverage']}%"
+                )
 
-            st.subheader("Skills Detected in Job Description")
-            st.write(", ".join(job_skills) if job_skills else "No listed skills detected.")
+                st.progress(
+                    max(0.0, min(
+                        1.0, results["combined_score"] / 100
+                    ))
+                )
 
-            missing = sorted(set(job_skills) - set(resume_skills))
+                st.subheader("Baseline vs Semantic AI")
 
-            st.subheader("Potential Skill Gaps")
-            if missing:
-                st.warning("Skills not detected in this resume: " + ", ".join(missing))
-            else:
-                st.success("All detected job skills were also detected in the resume.")
+                compare_df = pd.DataFrame({
+                    "Method": [
+                        "TF-IDF",
+                        "Semantic AI",
+                        "Combined Score"
+                    ],
+                    "Score (%)": [
+                        results["tfidf_score"],
+                        results["semantic_score"],
+                        results["combined_score"]
+                    ]
+                })
 
-            st.caption(
-                "This score is an experimental text-similarity and skill-coverage "
-                "measure, not a probability of job success. Verify results manually."
-            )
+                st.bar_chart(
+                    compare_df.set_index("Method")
+                )
+
+                st.dataframe(
+                    compare_df,
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.subheader("Skills Found in Resume")
+                    st.write(
+                        ", ".join(results["resume_skills"])
+                        if results["resume_skills"]
+                        else "No listed skills detected."
+                    )
+
+                with col2:
+                    st.subheader("Skills Detected in Job")
+                    st.write(
+                        ", ".join(results["job_skills"])
+                        if results["job_skills"]
+                        else "No listed skills detected."
+                    )
+
+                st.subheader("Matched Skills")
+                if results["matched_skills"]:
+                    st.success(
+                        ", ".join(results["matched_skills"])
+                    )
+                else:
+                    st.write("No overlapping taxonomy skills detected.")
+
+                st.subheader("Potential Skill Gaps")
+                if results["missing_skills"]:
+                    st.warning(
+                        "Not detected in resume: "
+                        + ", ".join(results["missing_skills"])
+                    )
+                elif results["job_skills"]:
+                    st.success(
+                        "All detected job skills were also detected "
+                        "in the resume."
+                    )
+                else:
+                    st.info(
+                        "No taxonomy skills were detected in the job "
+                        "description. Add specific skills for gap analysis."
+                    )
+
+                st.caption(
+                    "Scores are experimental similarity measures, not "
+                    "probabilities of hiring success. Semantic similarity "
+                    "does not prove skill proficiency. Review candidates "
+                    "fairly and manually."
+                )
+
+            except Exception as error:
+                st.error(
+                    "Analysis failed. Check the deployment logs "
+                    "if this continues."
+                )
+                st.code(str(error))
+
+
+# ---------------- DATASET ANALYSIS ----------------
 
 with tab2:
-    st.header("Analyze Your Synthetic Dataset")
+    st.header("Synthetic Dataset Analysis")
 
     dataset_file = st.file_uploader(
         "Upload hiresense_500_synthetic_resumes.csv",
         type=["csv"],
-        key="dataset"
+        key="dataset_upload"
     )
 
-    if dataset_file:
+    if dataset_file is not None:
         try:
             df = pd.read_csv(dataset_file)
+
             st.success(f"Loaded {len(df)} records.")
+
+            metric1, metric2 = st.columns(2)
+            metric1.metric("Total Records", len(df))
+            metric2.metric("Columns", len(df.columns))
 
             st.subheader("Dataset Preview")
             st.dataframe(df.head(20), use_container_width=True)
-
-            st.subheader("Dataset Summary")
-            st.write(df.describe(include="all").transpose())
 
             if "target_role" in df.columns:
                 st.subheader("Candidates by Target Role")
@@ -188,31 +333,48 @@ with tab2:
                     df["experience_years"].value_counts().sort_index()
                 )
 
+            st.subheader("Missing Values")
+            missing_df = (
+                df.isnull().sum()
+                .rename("Missing Values")
+                .to_frame()
+            )
+            st.dataframe(missing_df, use_container_width=True)
+
         except Exception as error:
-            st.error(f"Could not read the CSV: {error}")
+            st.error(f"Could not read CSV: {error}")
+
     else:
-        st.info("Upload the synthetic resumes CSV to explore the dataset.")
+        st.info(
+            "Extract the dataset ZIP on your computer, then upload "
+            "hiresense_500_synthetic_resumes.csv here."
+        )
+
+
+# ---------------- ABOUT ----------------
 
 with tab3:
     st.header("About HireSense AI")
 
     st.markdown("""
-    **Current capabilities**
+    **Current features**
+
     - NLP-based skill extraction
-    - TF-IDF resume/job similarity
-    - Skill coverage analysis
-    - Potential skill-gap identification
+    - TF-IDF baseline matching
+    - Sentence Transformer semantic matching
+    - Experimental combined matching score
+    - Skill-gap analysis
     - Synthetic dataset exploration
 
-    **Planned extensions**
-    - Sentence Transformer semantic search
-    - Retrieval-Augmented Generation (RAG)
-    - LLM-based explanations
-    - Resume PDF parsing
-    - Candidate comparison dashboard
+    **Planned enhancements**
+
+    - RAG-based recruitment question-answering chatbot
+    - LLM-generated explanations grounded in retrieved evidence
+    - PDF resume parsing
+    - Candidate comparison and model evaluation dashboard
     """)
 
     st.warning(
-        "Educational prototype only. This application uses experimental "
-        "matching scores and must not be used for automated hiring decisions."
+        "Educational prototype using experimental scoring. "
+        "Do not use it to make automated hiring decisions."
     )
